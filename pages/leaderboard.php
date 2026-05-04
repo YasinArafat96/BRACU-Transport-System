@@ -238,4 +238,106 @@ require_once '../includes/header.php';
     flex-wrap: wrap;
 }
 </style>
+
+<div class="container">
+    <!-- Header -->
+    <div class="leaderboard-header">
+        <h1 style="font-size: 3rem; margin-bottom: 10px;"><i class="fas fa-trophy"></i> Leaderboard</h1>
+        <p style="font-size: 1.2rem;">Top students ranked by points earned this week</p>
+    </div>
+    
+    <!-- Week Selector -->
+    <div class="week-selector">
+        <a href="?week=<?php echo $week-1; ?>&year=<?php echo $year; ?>" class="btn btn-sm btn-secondary">
+            <i class="fas fa-chevron-left"></i> Previous Week
+        </a>
+        <span style="font-weight: bold; padding: 0 20px;">
+            Week <?php echo $week; ?>, <?php echo $year; ?>
+        </span>
+        <a href="?week=<?php echo $week+1; ?>&year=<?php echo $year; ?>" class="btn btn-sm btn-secondary">
+            Next Week <i class="fas fa-chevron-right"></i>
+        </a>
+        <a href="?week=<?php echo date('W'); ?>&year=<?php echo date('Y'); ?>" class="btn btn-sm btn-primary">
+            Current Week
+        </a>
+    </div>
+    
+    <!-- Podium (Top 3) -->
+    <?php if (count($rankings) >= 3): ?>
+    <div class="podium">
+        <!-- 2nd Place -->
+        <div class="podium-item podium-2">
+            <div class="podium-rank">2</div>
+            <div class="podium-name"><?php echo htmlspecialchars($rankings[1]['first_name'] . ' ' . $rankings[1]['last_name']); ?></div>
+            <div class="podium-points"><?php echo number_format($rankings[1]['weekly_points']); ?> pts</div>
+            <div class="podium-bar" style="--height: 160px;"></div>
+        </div>
+        
+        <!-- 1st Place -->
+        <div class="podium-item podium-1">
+            <div class="podium-rank">1</div>
+            <div class="podium-name"><?php echo htmlspecialchars($rankings[0]['first_name'] . ' ' . $rankings[0]['last_name']); ?></div>
+            <div class="podium-points"><?php echo number_format($rankings[0]['weekly_points']); ?> pts</div>
+            <div class="podium-bar" style="--height: 200px;"></div>
+        </div>
+        
+        <!-- 3rd Place -->
+        <div class="podium-item podium-3">
+            <div class="podium-rank">3</div>
+            <div class="podium-name"><?php echo htmlspecialchars($rankings[2]['first_name'] . ' ' . $rankings[2]['last_name']); ?></div>
+            <div class="podium-points"><?php echo number_format($rankings[2]['weekly_points']); ?> pts</div>
+            <div class="podium-bar" style="--height: 120px;"></div>
+        </div>
+    </div>
+    <?php endif; ?>
+    
+    <!-- Your Rank Card -->
+    <?php if ($user_rank > 0): ?>
+    <div class="card" style="margin-bottom: 20px; background: linear-gradient(135deg, #f6f9fc, #e9f2f9);">
+        <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
+            <div>
+                <span style="color: #666;">Your Rank</span>
+                <div style="font-size: 2rem; font-weight: bold; color: #667eea;">#<?php echo $user_rank; ?></div>
+            </div>
+            <div>
+                <span style="color: #666;">Weekly Points</span>
+                <div style="font-size: 2rem; font-weight: bold; color: #667eea;"><?php echo number_format($user_points); ?></div>
+            </div>
+            <a href="rewards.php" class="btn btn-primary">
+                <i class="fas fa-gift"></i> Redeem Points
+            </a>
+        </div>
+    </div>
+    <?php endif; ?>
+    
+    <!-- Full Leaderboard -->
+    <div class="leaderboard-table">
+        <?php foreach ($rankings as $index => $user): 
+            $rank = $index + 1;
+            $is_current = ($user['id'] == $user_id);
+        ?>
+        <div class="leaderboard-row <?php echo $is_current ? 'current-user' : ''; ?>">
+            <div class="rank rank-<?php echo $rank; ?>">#<?php echo $rank; ?></div>
+            <div class="user-avatar">
+                <?php echo strtoupper(substr($user['first_name'], 0, 1) . substr($user['last_name'], 0, 1)); ?>
+            </div>
+            <div class="user-info">
+                <span class="user-name"><?php echo htmlspecialchars($user['first_name'] . ' ' . $user['last_name']); ?></span>
+                <?php if ($rank <= 3): ?>
+                    <span class="user-badge">
+                        <?php 
+                        if ($rank == 1) echo '🥇 GOLD';
+                        elseif ($rank == 2) echo '🥈 SILVER';
+                        elseif ($rank == 3) echo '🥉 BRONZE';
+                        ?>
+                    </span>
+                <?php endif; ?>
+            </div>
+            <div class="points-info">
+                <span class="weekly-points"><?php echo number_format($user['weekly_points']); ?> pts</span>
+                <span class="lifetime-points">Lifetime: <?php echo number_format($user['lifetime_points']); ?></span>
+            </div>
+        </div>
+        <?php endforeach; ?>
+    </div>
     
