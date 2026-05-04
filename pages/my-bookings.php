@@ -188,3 +188,206 @@ require_once '../includes/header.php';
         </div>
     </div>
 <?php endif; ?>
+<!-- View Ticket Modal -->
+<div class="modal" id="ticketModal">
+    <div class="modal-content">
+        <span class="close-modal">&times;</span>
+        <h2>Your Bus Ticket</h2>
+        <div class="ticket-container">
+            <div class="ticket-header">
+                <i class="fas fa-bus"></i>
+                <h3>Bracu Ticket</h3>
+            </div>
+            <div class="ticket-body">
+                <div class="ticket-info">
+                    <div class="ticket-field">
+                        <span class="label">Ticket Number:</span>
+                        <span class="value" id="ticketNumber"></span>
+                    </div>
+                    <div class="ticket-field">
+                        <span class="label">Passenger:</span>
+                        <span class="value" id="passengerName">
+                            <?php echo htmlspecialchars(($_SESSION['first_name'] ?? '') . ' ' . ($_SESSION['last_name'] ?? '')); ?>
+                        </span>
+                    </div>
+                    <div class="ticket-field">
+                        <span class="label">Student ID:</span>
+                        <span class="value" id="studentId"><?php echo htmlspecialchars($_SESSION['student_id'] ?? 'N/A'); ?></span>
+                    </div>
+                    <div class="ticket-field">
+                        <span class="label">Route:</span>
+                        <span class="value" id="ticketRoute"></span>
+                    </div>
+                    <div class="ticket-field">
+                        <span class="label">Bus Number:</span>
+                        <span class="value" id="ticketBus"></span>
+                    </div>
+                    <div class="ticket-field">
+                        <span class="label">Seat Number:</span>
+                        <span class="value" id="ticketSeat"></span>
+                    </div>
+                    <div class="ticket-field">
+                        <span class="label">Departure:</span>
+                        <span class="value" id="ticketDeparture"></span>
+                    </div>
+                    <div class="ticket-field">
+                        <span class="label">Date:</span>
+                        <span class="value" id="ticketDate"></span>
+                    </div>
+                </div>
+                <div class="ticket-barcode">
+                    <div id="barcode"></div>
+                    <small>Ticket ID: <span id="ticketId"></span></small>
+                </div>
+            </div>
+            <div class="ticket-footer">
+                <p>Please show this ticket when boarding the bus</p>
+                <button class="btn btn-primary" onclick="printTicket()">
+                    <i class="fas fa-print"></i> Print Ticket
+                </button>
+            </div>
+        </div>
+    </div>
+</div>
+
+<script>
+// Function to show ticket details in modal
+function showTicket(booking) {
+    const studentId = '<?php echo $_SESSION['student_id'] ?? 'N/A'; ?>';
+    const ticketNumber = 'BUS' + booking.bus_id + 'S' + booking.seat_number + 'ID' + studentId;
+    
+    const bookingDate = new Date(booking.booking_time);
+    const departureTime = booking.departure_time;
+    
+    document.getElementById('ticketNumber').textContent = ticketNumber;
+    document.getElementById('ticketRoute').textContent = booking.route_name;
+    document.getElementById('ticketBus').textContent = booking.bus_number;
+    document.getElementById('ticketSeat').textContent = 'Seat ' + booking.seat_number;
+    document.getElementById('ticketDeparture').textContent = departureTime;
+    document.getElementById('ticketDate').textContent = bookingDate.toLocaleDateString();
+    document.getElementById('ticketId').textContent = 'BK' + booking.id.toString().padStart(6, '0');
+    
+    document.getElementById('barcode').innerHTML = '';
+    for(let i = 0; i < 3; i++) {
+        const line = document.createElement('div');
+        line.style.height = '20px';
+        line.style.backgroundColor = '#000';
+        line.style.margin = '2px 0';
+        line.style.width = Math.floor(Math.random() * 50 + 50) + '%';
+        document.getElementById('barcode').appendChild(line);
+    }
+    
+    document.getElementById('ticketModal').style.display = 'flex';
+}
+
+function printTicket() {
+    const ticketContent = document.querySelector('.ticket-container').outerHTML;
+    const printWindow = window.open('', '_blank');
+    printWindow.document.write(`
+        <!DOCTYPE html>
+        <html>
+        <head>
+            <title>Print Ticket</title>
+            <style>
+                body { font-family: Arial, sans-serif; padding: 20px; }
+                .ticket-container { border: 2px solid #000; padding: 20px; max-width: 400px; margin: 0 auto; border-radius: 10px; }
+                .ticket-header { text-align: center; margin-bottom: 20px; }
+                .ticket-header i { font-size: 2rem; color: #3498db; }
+                .ticket-field { display: flex; justify-content: space-between; margin: 8px 0; }
+                .label { font-weight: bold; }
+                .ticket-barcode { text-align: center; margin: 20px 0; }
+                .ticket-footer { text-align: center; margin-top: 20px; }
+                @media print {
+                    body { padding: 0; }
+                    .ticket-container { border: none; box-shadow: none; }
+                    button { display: none; }
+                }
+            </style>
+        </head>
+        <body>
+            ${ticketContent}
+        </body>
+        </html>
+    `);
+    printWindow.document.close();
+    printWindow.focus();
+    printWindow.print();
+}
+
+document.querySelector('.close-modal').addEventListener('click', function() {
+    document.getElementById('ticketModal').style.display = 'none';
+});
+
+window.addEventListener('click', function(event) {
+    if (event.target === document.getElementById('ticketModal')) {
+        document.getElementById('ticketModal').style.display = 'none';
+    }
+});
+
+function updateDepartureTimers() {
+    const timers = document.querySelectorAll('.departure-timer');
+    
+    timers.forEach(timer => {
+        const departureTimeStr = timer.getAttribute('data-departure');
+        const [datePart, timePart] = departureTimeStr.split(' ');
+        const [year, month, day] = datePart.split('-');
+        const [hours, minutes, seconds] = timePart.split(':');
+        
+        const departureDate = new Date(year, month - 1, day, hours, minutes, seconds);
+        const now = new Date();
+        
+        const timeDiff = departureDate - now;
+        
+        if (timeDiff <= 0) {
+            timer.textContent = 'Departed';
+            timer.classList.add('text-danger');
+            
+            const cancelBtn = timer.closest('.booking-card').querySelector('button[type="submit"]');
+            if (cancelBtn) {
+                cancelBtn.disabled = true;
+                cancelBtn.textContent = 'Cancel (Expired)';
+                cancelBtn.classList.remove('btn-warning');
+                cancelBtn.classList.add('btn-secondary');
+            }
+            return;
+        }
+        
+        const hoursLeft = Math.floor(timeDiff / (1000 * 60 * 60));
+        const minutesLeft = Math.floor((timeDiff % (1000 * 60 * 60)) / (1000 * 60));
+        const secondsLeft = Math.floor((timeDiff % (1000 * 60)) / 1000);
+        
+        timer.textContent = `${hoursLeft}h ${minutesLeft}m ${secondsLeft}s`;
+        
+        if (hoursLeft < 1) {
+            const refundElement = timer.closest('.booking-card').querySelector('.text-success');
+            if (refundElement) {
+                refundElement.textContent = 'No refund available';
+                refundElement.classList.remove('text-success');
+                refundElement.classList.add('text-danger');
+            }
+            
+            const cancelBtn = timer.closest('.booking-card').query.querySelector('button[type="submit"]');
+            if (cancelBtn && cancelBtn.textContent.includes('Refund')) {
+                cancelBtn.disabled = true;
+                cancelBtn.textContent = 'Cancel (No Refund)';
+                cancelBtn.classList.remove('btn-warning');
+                cancelBtn.classList.add('btn-danger');
+            }
+        }
+    });
+}
+
+setInterval(updateDepartureTimers, 1000);
+updateDepartureTimers();
+</script>
+
+<style>
+.departure-timer { font-weight: bold; color: var(--primary); }
+.text-success { color: var(--secondary) !important; font-weight: bold; }
+.text-danger { color: var(--danger) !important; font-weight: bold; }
+.booking-card .btn:disabled { opacity: 0.6; cursor: not-allowed; }
+</style>
+
+<?php
+require_once '../includes/footer.php';
+?>
