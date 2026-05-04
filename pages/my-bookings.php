@@ -1,3 +1,8 @@
+<?php
+/**
+ * My Bookings page for University Bus Booking System
+ * Displays user's booked seats and journey history
+ */
 
 require_once '../includes/config.php';
 
