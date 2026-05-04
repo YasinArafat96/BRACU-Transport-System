@@ -1,14 +1,11 @@
 <?php
-/**
- * Enhanced Ride Sharing System
- * Features: Group rides, fare splitting, real-time chat, ratings
- */
+
 
 require_once '../includes/config.php';
 require_once '../includes/ride_sharing_schema.php';
 ensure_ride_sharing_schema($pdo);
 
-// Check if user is logged in
+
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     header("Location: login.php");
     exit;
@@ -16,10 +13,9 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
 
 $user_id = $_SESSION['id'];
 
-// Handle creating a new ride share
+
 if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
     
-    // Create new ride share
     if ($_POST['action'] == 'create_ride') {
         $from_location = $_POST['from_location'];
         $to_location = $_POST['to_location'];
@@ -38,7 +34,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
         $pdo->beginTransaction();
         
         try {
-            // Insert ride share
+           
             $stmt = $pdo->prepare("
                 INSERT INTO ride_shares (
                     creator_id, from_location, to_location, departure_time,
@@ -58,21 +54,19 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
             
             $ride_id = $pdo->lastInsertId();
             
-            // Add creator as participant
+           
             $stmt = $pdo->prepare("
                 INSERT INTO ride_share_participants (ride_share_id, user_id, seats_booked, status, payment_status)
                 VALUES (?, ?, 1, 'confirmed', 'pending')
             ");
             $stmt->execute([$ride_id, $user_id]);
             
-            // Initialize fare split
             $stmt = $pdo->prepare("
                 INSERT INTO fare_splits (ride_share_id, user_id, amount_owed)
                 VALUES (?, ?, ?)
             ");
             $stmt->execute([$ride_id, $user_id, $fare_per_person]);
             
-            // Add system message to chat
             $stmt = $pdo->prepare("
                 INSERT INTO chat_messages (ride_share_id, user_id, message, message_type, is_system)
                 VALUES (?, ?, 'Ride created!', 'system', 1)
@@ -93,12 +87,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
         }
     }
     
-    // Join a ride
+ 
     if ($_POST['action'] == 'join_ride') {
         $ride_id = (int)$_POST['ride_id'];
         $seats = (int)$_POST['seats'];
         
-        // Get ride details
+      
         $ride = $pdo->prepare("SELECT * FROM ride_shares WHERE id = ? AND status = 'active'");
         $ride->execute([$ride_id]);
         $ride_data = $ride->fetch();
@@ -115,7 +109,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
             exit;
         }
         
-        // Check if already joined
+      
         $check = $pdo->prepare("SELECT id FROM ride_share_participants WHERE ride_share_id = ? AND user_id = ?");
         $check->execute([$ride_id, $user_id]);
         
@@ -128,18 +122,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
         $pdo->beginTransaction();
         
         try {
-            // Add participant
+            
             $stmt = $pdo->prepare("
                 INSERT INTO ride_share_participants (ride_share_id, user_id, seats_booked, status)
                 VALUES (?, ?, ?, 'confirmed')
             ");
             $stmt->execute([$ride_id, $user_id, $seats]);
             
-            // Update available seats
+          
             $stmt = $pdo->prepare("UPDATE ride_shares SET available_seats = available_seats - ? WHERE id = ?");
             $stmt->execute([$seats, $ride_id]);
             
-            // Add fare split
+     
             $amount_owed = $seats * $ride_data['fare_per_person'];
             $stmt = $pdo->prepare("
                 INSERT INTO fare_splits (ride_share_id, user_id, amount_owed)
@@ -147,7 +141,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
             ");
             $stmt->execute([$ride_id, $user_id, $amount_owed]);
             
-            // Add chat message
+         
             $user = getUserInfo($pdo, $user_id);
             $stmt = $pdo->prepare("
                 INSERT INTO chat_messages (ride_share_id, user_id, message, message_type, is_system)
@@ -169,7 +163,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
         }
     }
     
-    // Send chat message
+   
     if ($_POST['action'] == 'send_message') {
         $ride_id = (int)$_POST['ride_id'];
         $message = trim($_POST['message']);
@@ -186,12 +180,12 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
         exit;
     }
     
-    // Make payment
+    
     if ($_POST['action'] == 'make_payment') {
         $ride_id = (int)$_POST['ride_id'];
         $amount = (float)$_POST['amount'];
         
-        // Check wallet balance
+    
         $wallet = $pdo->prepare("SELECT balance FROM wallet WHERE user_id = ?");
         $wallet->execute([$user_id]);
         $balance = $wallet->fetchColumn();
@@ -205,7 +199,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
         $pdo->beginTransaction();
         
         try {
-            // Update fare split
+         
             $stmt = $pdo->prepare("
                 UPDATE fare_splits SET 
                     amount_paid = ?, 
@@ -216,18 +210,18 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
             ");
             $stmt->execute([$amount, $ride_id, $user_id]);
             
-            // Deduct from wallet
+        
             $stmt = $pdo->prepare("UPDATE wallet SET balance = balance - ? WHERE user_id = ?");
             $stmt->execute([$amount, $user_id]);
             
-            // Record transaction
+            
             $stmt = $pdo->prepare("
                 INSERT INTO transactions (user_id, amount, type, description)
                 VALUES (?, ?, 'debit', 'Ride share payment')
             ");
             $stmt->execute([$user_id, $amount]);
             
-            // Award points
+        
             awardPoints($pdo, $user_id, 5, 'ride_share_payment', 'Ride share wallet payment', $ride_id);
             
             $pdo->commit();
@@ -244,14 +238,14 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
         }
     }
     
-    // Rate a rider
+ 
     if ($_POST['action'] == 'submit_rating') {
         $ride_id = (int)$_POST['ride_id'];
         $ratee_id = (int)$_POST['ratee_id'];
         $rating = (int)$_POST['rating'];
         $review = $_POST['review'];
         
-        // Check if already rated
+        
         $check = $pdo->prepare("
             SELECT id FROM ride_ratings 
             WHERE ride_share_id = ? AND rater_id = ? AND ratee_id = ?
@@ -273,11 +267,10 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['action'])) {
     }
 }
 
-// Get single ride view if specified
 $view_ride = isset($_GET['view']) ? (int)$_GET['view'] : 0;
 
 if ($view_ride > 0) {
-    // Get ride details
+  
     $ride = $pdo->prepare("
         SELECT rs.*, u.first_name, u.last_name, u.id as creator_user_id,
                (SELECT COUNT(*) FROM ride_share_participants WHERE ride_share_id = rs.id) as participant_count
@@ -294,7 +287,7 @@ if ($view_ride > 0) {
         exit;
     }
     
-    // Get participants - FIXED
+ 
     $participants = $pdo->prepare("
         SELECT rsp.*, u.first_name, u.last_name, u.id as user_id,
                COALESCE(fs.amount_owed, 0) as amount_owed,
@@ -308,7 +301,7 @@ if ($view_ride > 0) {
     $participants->execute([$view_ride]);
     $participants_data = $participants->fetchAll();
     
-    // Get chat messages - FIXED
+
     $messages = $pdo->prepare("
         SELECT cm.*, u.first_name, u.last_name
         FROM chat_messages cm
@@ -319,7 +312,7 @@ if ($view_ride > 0) {
     $messages->execute([$view_ride]);
     $chat_messages = $messages->fetchAll();
     
-    // Get ratings
+
     $ratings = $pdo->prepare("
         SELECT rr.*, u.first_name, u.last_name
         FROM ride_ratings rr
@@ -329,7 +322,7 @@ if ($view_ride > 0) {
     $ratings->execute([$view_ride]);
     $ride_ratings = $ratings->fetchAll();
     
-    // Check if current user is participant
+ 
     $is_participant = false;
     $user_participant = null;
     foreach ($participants_data as $p) {
@@ -560,7 +553,7 @@ if ($view_ride > 0) {
             <i class="fas fa-arrow-left"></i> Back to All Rides
         </a>
         
-        <!-- Ride Header -->
+       
         <div class="ride-detail-header">
             <div style="position: relative; z-index: 1;">
                 <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
@@ -594,9 +587,9 @@ if ($view_ride > 0) {
         </div>
         
         <div class="row" style="display: grid; grid-template-columns: 2fr 1fr; gap: 20px;">
-            <!-- Left Column - Chat & Details -->
+         
             <div>
-                <!-- Chat Section -->
+                
                 <div class="card">
                     <h3><i class="fas fa-comments"></i> Group Chat</h3>
                     
@@ -635,7 +628,7 @@ if ($view_ride > 0) {
                     <?php endif; ?>
                 </div>
                 
-                <!-- Ride Details -->
+               
                 <div class="card">
                     <h3><i class="fas fa-info-circle"></i> Ride Details</h3>
                     
@@ -698,9 +691,9 @@ if ($view_ride > 0) {
                 </div>
             </div>
             
-            <!-- Right Column - Participants & Payments -->
+           
             <div>
-                <!-- Participants -->
+            
                 <div class="card">
                     <h3><i class="fas fa-users"></i> Participants (<?php echo count($participants_data); ?>)</h3>
                     
@@ -758,7 +751,7 @@ if ($view_ride > 0) {
                 </div>
                 <?php endif; ?>
                 
-                <!-- Payment Section (if user is participant and hasn't paid) -->
+               
                 <?php if ($is_participant && $user_participant && (!isset($user_participant['payment_status']) || $user_participant['payment_status'] != 'paid')): ?>
                 <div class="card">
                     <h3><i class="fas fa-credit-card"></i> Payment</h3>
@@ -785,7 +778,7 @@ if ($view_ride > 0) {
                 </div>
                 <?php endif; ?>
                 
-                <!-- Rating Section (for completed rides) -->
+              
                 <?php if (isset($ride_data['status']) && $ride_data['status'] == 'completed' && $is_participant): ?>
                 <div class="card">
                     <h3><i class="fas fa-star"></i> Rate Participants</h3>
@@ -838,13 +831,13 @@ if ($view_ride > 0) {
     </div>
     
     <script>
-    // Scroll chat to bottom
+   
     var chat = document.getElementById('chat');
     if (chat) {
         chat.scrollTop = chat.scrollHeight;
     }
     
-    // Star rating hover effect
+   
     document.querySelectorAll('.rating-stars i').forEach(star => {
         star.addEventListener('mouseenter', function() {
             let rating = this.getAttribute('data-rating');
@@ -891,7 +884,7 @@ if ($view_ride > 0) {
     exit;
 }
 
-// ==================== MAIN LISTING PAGE ====================
+
 
 ensure_demo_community_ride($pdo, $user_id);
 
@@ -906,7 +899,7 @@ $stmt = $pdo->query("
 ");
 $all_rides = $stmt->fetchAll();
 
-// Get user's active rides
+
 $my_rides = $pdo->prepare("
     SELECT rs.*, rsp.seats_booked, rsp.status as participant_status,
            CASE WHEN rs.creator_id = ? THEN 'creator' ELSE 'participant' END as user_role
@@ -1228,7 +1221,7 @@ require_once '../includes/header.php';
     background: #f0f7ff;
 }
 
-/* Floating info panels (public list — everyone sees the same community panel) */
+
 .rs-float-panel {
     position: fixed;
     bottom: max(12px, env(safe-area-inset-bottom));
@@ -1297,7 +1290,7 @@ require_once '../includes/header.php';
 </style>
 
 <div class="container">
-    <!-- Hero Section -->
+    
     <div class="hero-section">
         <div class="hero-title">
             <i class="fas fa-car-side"></i> Ride Sharing
@@ -1307,11 +1300,11 @@ require_once '../includes/header.php';
         </div>
     </div>
     
-    <!-- Stats Bar -->
+
     <?php
     $total_rides = $pdo->query("SELECT COUNT(*) FROM ride_shares WHERE status = 'active'")->fetchColumn();
     $total_users = $pdo->query("SELECT COUNT(DISTINCT user_id) FROM ride_share_participants")->fetchColumn();
-    $avg_rating = 4.8; // Placeholder
+    $avg_rating = 4.8; 
     ?>
     <div class="stats-bar">
         <div class="stat-item">
@@ -1328,7 +1321,7 @@ require_once '../includes/header.php';
         </div>
     </div>
     
-    <!-- My Active Rides -->
+   
     <?php if (!empty($my_active_rides)): ?>
     <div class="my-rides-section">
         <h2><i class="fas fa-clock"></i> Your Active Rides</h2>
@@ -1359,18 +1352,16 @@ require_once '../includes/header.php';
     </div>
     <?php endif; ?>
     
-    <!-- Create Ride Button -->
     <div style="text-align: center; margin: 30px 0;">
         <button class="create-ride-btn" onclick="document.getElementById('createRideModal').style.display='flex'">
             <i class="fas fa-plus-circle"></i> Create New Ride Share
         </button>
     </div>
     
-    <!-- Available Rides -->
     <?php if (count($all_rides) > 0): ?>
         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(350px, 1fr)); gap: 20px;">
             <?php foreach ($all_rides as $ride): 
-                // Safe defaults for all values
+                
                 $estimated_duration = isset($ride['estimated_duration']) ? $ride['estimated_duration'] : 30;
                 $allow_pets = isset($ride['allow_pets']) ? $ride['allow_pets'] : 0;
                 $allow_luggage = isset($ride['allow_luggage']) ? $ride['allow_luggage'] : 1;
@@ -1482,7 +1473,7 @@ require_once '../includes/header.php';
     <?php endif; ?>
 </div>
 
-<!-- Create Ride Modal -->
+
 <div class="modal" id="createRideModal">
     <div class="modal-content">
         <span class="close-modal" onclick="document.getElementById('createRideModal').style.display='none'">&times;</span>
@@ -1573,7 +1564,7 @@ require_once '../includes/header.php';
     </div>
 </div>
 
-<!-- Quick Preview Modal -->
+
 <div class="modal" id="previewModal">
     <div class="modal-content" style="max-width: 400px;">
         <span class="close-modal" onclick="closePreview()">&times;</span>
@@ -1648,7 +1639,7 @@ require_once '../includes/header.php';
 <script>
 function showRidePreview(ride) {
     try {
-        // Build preview HTML
+       
         let musicIcon = '🎵';
         if (ride.music_preference === 'quiet') musicIcon = '🔇';
         else if (ride.music_preference === 'conversation') musicIcon = '💬';
@@ -1735,7 +1726,7 @@ function showRidePreview(ride) {
         
     } catch (e) {
         console.error('Preview error:', e);
-        // If preview fails, just go to the details page
+      
         window.location.href = '?view=' + ride.id;
     }
 }
@@ -1744,7 +1735,7 @@ function closePreview() {
     document.getElementById('previewModal').style.display = 'none';
 }
 
-// Close modal when clicking outside
+
 window.addEventListener('click', function(event) {
     var modal = document.getElementById('previewModal');
     if (event.target == modal) {
@@ -1757,7 +1748,7 @@ window.addEventListener('click', function(event) {
     }
 });
 
-// Auto-refresh chat every 10 seconds if on ride view
+
 <?php if ($view_ride > 0): ?>
 setTimeout(function() {
     location.reload();
@@ -1765,7 +1756,6 @@ setTimeout(function() {
 <?php endif; ?>
 </script>
 
-<!-- Floating panels: your rides + everyone else's (public) -->
 <div class="rs-float-panel rs-float-left" id="rs-float-my" aria-label="My ride shares">
     <div class="rs-float-head"><i class="fas fa-id-badge"></i> My ride shares</div>
     <div class="rs-float-body">
