@@ -1,21 +1,18 @@
 <?php
-/**
- * Buses page for University Bus Booking System
- * Displays buses for a selected route
- */
+
 
 require_once '../includes/config.php';
 
-// Check if user is logged in
+
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     header("Location: login.php");
     exit;
 }
 
-// Get route ID from query parameter
+
 $route_id = isset($_GET['route_id']) ? (int)$_GET['route_id'] : 0;
 
-// Fetch route details
+
 $route_stmt = $pdo->prepare("SELECT * FROM routes WHERE id = ? AND active = 1");
 $route_stmt->execute([$route_id]);
 $route = $route_stmt->fetch();
@@ -26,7 +23,7 @@ if (!$route) {
     exit();
 }
 
-// Fetch buses for this route
+
 $buses_stmt = $pdo->prepare("
     SELECT b.*, 
            (SELECT COUNT(*) FROM bookings WHERE bus_id = b.id AND status IN ('confirmed', 'pending')) as booked_seats
