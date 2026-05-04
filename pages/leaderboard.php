@@ -1,11 +1,9 @@
 <?php
-/**
- * Enhanced Leaderboard with Weekly Rankings
- */
+
 
 require_once '../includes/config.php';
 
-// Check if user is logged in
+
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     header("Location: login.php");
     exit;
@@ -15,7 +13,7 @@ $user_id = $_SESSION['id'];
 $week = isset($_GET['week']) ? (int)$_GET['week'] : date('W');
 $year = isset($_GET['year']) ? (int)$_GET['year'] : date('Y');
 
-// Get weekly leaderboard
+
 $leaderboard = $pdo->prepare("
     SELECT u.id, u.first_name, u.last_name, u.total_points as lifetime_points,
            COALESCE(wl.total_points, 0) as weekly_points,
@@ -29,7 +27,7 @@ $leaderboard = $pdo->prepare("
 $leaderboard->execute([$week, $year]);
 $rankings = $leaderboard->fetchAll();
 
-// Get current user's rank
+
 $user_rank = 0;
 $user_points = 0;
 foreach ($rankings as $index => $user) {
@@ -240,13 +238,13 @@ require_once '../includes/header.php';
 </style>
 
 <div class="container">
-    <!-- Header -->
+   
     <div class="leaderboard-header">
         <h1 style="font-size: 3rem; margin-bottom: 10px;"><i class="fas fa-trophy"></i> Leaderboard</h1>
         <p style="font-size: 1.2rem;">Top students ranked by points earned this week</p>
     </div>
     
-    <!-- Week Selector -->
+  
     <div class="week-selector">
         <a href="?week=<?php echo $week-1; ?>&year=<?php echo $year; ?>" class="btn btn-sm btn-secondary">
             <i class="fas fa-chevron-left"></i> Previous Week
@@ -262,10 +260,10 @@ require_once '../includes/header.php';
         </a>
     </div>
     
-    <!-- Podium (Top 3) -->
+   
     <?php if (count($rankings) >= 3): ?>
     <div class="podium">
-        <!-- 2nd Place -->
+        
         <div class="podium-item podium-2">
             <div class="podium-rank">2</div>
             <div class="podium-name"><?php echo htmlspecialchars($rankings[1]['first_name'] . ' ' . $rankings[1]['last_name']); ?></div>
@@ -273,7 +271,7 @@ require_once '../includes/header.php';
             <div class="podium-bar" style="--height: 160px;"></div>
         </div>
         
-        <!-- 1st Place -->
+        
         <div class="podium-item podium-1">
             <div class="podium-rank">1</div>
             <div class="podium-name"><?php echo htmlspecialchars($rankings[0]['first_name'] . ' ' . $rankings[0]['last_name']); ?></div>
@@ -281,7 +279,7 @@ require_once '../includes/header.php';
             <div class="podium-bar" style="--height: 200px;"></div>
         </div>
         
-        <!-- 3rd Place -->
+       
         <div class="podium-item podium-3">
             <div class="podium-rank">3</div>
             <div class="podium-name"><?php echo htmlspecialchars($rankings[2]['first_name'] . ' ' . $rankings[2]['last_name']); ?></div>
@@ -291,7 +289,7 @@ require_once '../includes/header.php';
     </div>
     <?php endif; ?>
     
-    <!-- Your Rank Card -->
+   
     <?php if ($user_rank > 0): ?>
     <div class="card" style="margin-bottom: 20px; background: linear-gradient(135deg, #f6f9fc, #e9f2f9);">
         <div style="display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap;">
@@ -310,7 +308,7 @@ require_once '../includes/header.php';
     </div>
     <?php endif; ?>
     
-    <!-- Full Leaderboard -->
+   
     <div class="leaderboard-table">
         <?php foreach ($rankings as $index => $user): 
             $rank = $index + 1;
@@ -340,4 +338,37 @@ require_once '../includes/header.php';
         </div>
         <?php endforeach; ?>
     </div>
+ 
+    <div style="margin-top: 30px; text-align: center;">
+        <h3>Weekly Prizes</h3>
+        <div style="display: flex; justify-content: center; gap: 30px; margin-top: 20px;">
+            <div style="text-align: center;">
+                <div style="background: gold; width: 50px; height: 50px; border-radius: 50%; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-crown" style="color: white;"></i>
+                </div>
+                <strong>1st Place</strong>
+                <p>100% Off Voucher</p>
+            </div>
+            <div style="text-align: center;">
+                <div style="background: silver; width: 50px; height: 50px; border-radius: 50%; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-medal" style="color: white;"></i>
+                </div>
+                <strong>2nd Place</strong>
+                <p>50% Off Voucher</p>
+            </div>
+            <div style="text-align: center;">
+                <div style="background: #cd7f32; width: 50px; height: 50px; border-radius: 50%; margin: 0 auto 10px; display: flex; align-items: center; justify-content: center;">
+                    <i class="fas fa-medal" style="color: white;"></i>
+                </div>
+                <strong>3rd Place</strong>
+                <p>30% Off Voucher</p>
+            </div>
+        </div>
+        <p style="margin-top: 20px; color: #666;">
+            <i class="fas fa-info-circle"></i> Winners are announced every Monday. Vouchers valid for 30 days.
+        </p>
+    </div>
+</div>
+
+<?php require_once '../includes/footer.php'; ?>
     
