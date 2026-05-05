@@ -1,18 +1,13 @@
 <?php
-/**
- * My Bookings page for University Bus Booking System
- * Displays user's booked seats and journey history
- */
+
 
 require_once '../includes/config.php';
 
-// Check if user is logged in
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     header("Location: login.php");
     exit;
 }
 
-// Redirect admins away from my-bookings page
 if (isAdmin($pdo, $_SESSION['id'])) {
     $_SESSION['info'] = "Booking functionality is for students only.";
     header("Location: admin.php");
@@ -21,7 +16,7 @@ if (isAdmin($pdo, $_SESSION['id'])) {
 
 $user_id = $_SESSION['id'];
 
-// Get user's full information from database
+
 $user_info = getUserInfo($pdo, $user_id);
 if ($user_info) {
     $_SESSION['student_id'] = $user_info['student_id'];
@@ -29,7 +24,7 @@ if ($user_info) {
     $_SESSION['last_name'] = $user_info['last_name'];
 }
 
-// Fetch user's bookings with route and bus details
+
 $bookings_stmt = $pdo->prepare("
     SELECT b.*, 
            bus.bus_number, bus.departure_time, bus.arrival_time,
@@ -60,12 +55,11 @@ require_once '../includes/header.php';
                 $status = strtolower($booking['status']);
             }
             
-            // Calculate time until departure
+        
             $time_until = $departure_time - $current_time;
             $hours_until = floor($time_until / 3600);
             $minutes_until = floor(($time_until % 3600) / 60);
             
-            // Check if cancellation is allowed (more than 1 hour before departure)
             $can_cancel = $time_until > 3600 && ($booking['status'] == 'pending' || $booking['status'] == 'confirmed');
             $refund_percentage = $can_cancel ? 100 : 0;
         ?>
@@ -190,7 +184,7 @@ require_once '../includes/header.php';
     </div>
 <?php endif; ?>
 
-<!-- View Ticket Modal -->
+
 <div class="modal" id="ticketModal">
     <div class="modal-content">
         <span class="close-modal">&times;</span>
@@ -253,7 +247,7 @@ require_once '../includes/header.php';
 </div>
 
 <script>
-// Function to show ticket details in modal
+
 function showTicket(booking) {
     const studentId = '<?php echo $_SESSION['student_id'] ?? 'N/A'; ?>';
     const ticketNumber = 'BUS' + booking.bus_id + 'S' + booking.seat_number + 'ID' + studentId;
