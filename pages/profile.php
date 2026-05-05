@@ -4,6 +4,7 @@
  */
 
 require_once '../includes/config.php';
+ensureFriendsSchema($pdo);
 
 // Check if user is logged in
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
@@ -14,6 +15,29 @@ if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
 $user_id = $_SESSION['id'];
 $success = '';
 $error = '';
+
+$pdo->exec("
+    CREATE TABLE IF NOT EXISTS user_reviews (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        user_id INTEGER NOT NULL,
+        rating INTEGER NOT NULL CHECK (rating BETWEEN 1 AND 5),
+        review_text TEXT NOT NULL,
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+    )
+");
+$pdo->exec("
+    CREATE TABLE IF NOT EXISTS user_review_votes (
+        id INTEGER PRIMARY KEY AUTOINCREMENT,
+        review_id INTEGER NOT NULL,
+        user_id INTEGER NOT NULL,
+        vote_type TEXT NOT NULL CHECK (vote_type IN ('like', 'dislike')),
+        created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+        FOREIGN KEY (review_id) REFERENCES user_reviews(id) ON DELETE CASCADE,
+        FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+        UNIQUE (review_id, user_id)
+    )
+");
 
 // Handle profile update
 if ($_SERVER['REQUEST_METHOD'] == 'POST') {
@@ -115,6 +139,7 @@ if ($_SERVER['REQUEST_METHOD'] == 'POST') {
 $user_stmt = $pdo->prepare("SELECT * FROM users WHERE id = ?");
 $user_stmt->execute([$user_id]);
 $user = $user_stmt->fetch();
+$public_user_id = !empty($user['public_user_id']) ? $user['public_user_id'] : ('#' . str_pad((string) $user_id, 5, '0', STR_PAD_LEFT));
 
 // Get user settings (ensure row exists so toggles save correctly)
 try {
@@ -131,12 +156,19 @@ $favorites_stmt = $pdo->prepare("SELECT * FROM user_favorites WHERE user_id = ? 
 $favorites_stmt->execute([$user_id]);
 $favorites = $favorites_stmt->fetchAll();
 
-// Get user ratings
+// Get reviews submitted by this user (activity style)
 $ratings_stmt = $pdo->prepare("
-    SELECT ur.*, u.first_name, u.last_name 
-    FROM user_ratings ur
-    JOIN users u ON ur.rater_id = u.id
-    WHERE ur.rated_user_id = ?
+    SELECT
+        ur.id,
+        ur.rating,
+        ur.review_text,
+        ur.created_at,
+        COALESCE(SUM(CASE WHEN rv.vote_type = 'like' THEN 1 ELSE 0 END), 0) AS like_count,
+        COALESCE(SUM(CASE WHEN rv.vote_type = 'dislike' THEN 1 ELSE 0 END), 0) AS dislike_count
+    FROM user_reviews ur
+    LEFT JOIN user_review_votes rv ON rv.review_id = ur.id
+    WHERE ur.user_id = ?
+    GROUP BY ur.id, ur.rating, ur.review_text, ur.created_at
     ORDER BY ur.created_at DESC
 ");
 $ratings_stmt->execute([$user_id]);
@@ -147,7 +179,7 @@ $avg_rating = 0;
 if (count($ratings) > 0) {
     $sum = 0;
     foreach ($ratings as $r) {
-        $sum += $r['rating'];
+        $sum += (int) $r['rating'];
     }
     $avg_rating = round($sum / count($ratings), 1);
 }
@@ -577,6 +609,9 @@ body.theme-dark .favorite-item:hover {
                     </div>
                     <div>
                         <span class="profile-badge">
+                            <i class="fas fa-id-card"></i> <?php echo htmlspecialchars($public_user_id); ?>
+                        </span>
+                        <span class="profile-badge">
                             <i class="fas fa-star"></i> <?php echo $avg_rating; ?> Rating
                         </span>
                         <span class="profile-badge">
@@ -654,6 +689,11 @@ body.theme-dark .favorite-item:hover {
     <div class="profile-tabs">
         <div class="profile-tab active" onclick="showTab('info')">
             <i class="fas fa-user"></i> Personal Info
+        </div>
+        <div class="profile-tab">
+            <a href="friends.php" style="text-decoration: none; color: inherit;">
+                <i class="fas fa-user-friends"></i> Friends
+            </a>
         </div>
         <div class="profile-tab" onclick="showTab('favorites')">
             <i class="fas fa-heart"></i> Favorites
@@ -812,15 +852,15 @@ body.theme-dark .favorite-item:hover {
     <!-- Tab: Reviews -->
     <div id="tab-reviews" class="tab-content">
         <div class="card">
-            <h2>Reviews & Ratings</h2>
+            <h2>My Review Activity</h2>
+            <p style="color: #666; margin-top: 0;">Reviews you posted from the Reviews page.</p>
+            <p><a class="btn btn-primary btn-sm" href="reviews.php"><i class="fas fa-plus"></i> Write New Review</a></p>
             
             <?php if (count($ratings) > 0): ?>
                 <?php foreach ($ratings as $rating): ?>
                 <div class="review-item">
                     <div class="review-header">
-                        <span class="reviewer-name">
-                            <?php echo htmlspecialchars($rating['first_name'] . ' ' . $rating['last_name']); ?>
-                        </span>
+                        <span class="reviewer-name">You posted a review</span>
                         <span class="review-date">
                             <?php echo date('M j, Y', strtotime($rating['created_at'])); ?>
                         </span>
@@ -836,13 +876,17 @@ body.theme-dark .favorite-item:hover {
                         <?php endfor; ?>
                     </div>
                     
-                    <?php if ($rating['review']): ?>
-                        <p style="margin-top: 10px;"><?php echo htmlspecialchars($rating['review']); ?></p>
+                    <?php if ($rating['review_text']): ?>
+                        <p style="margin-top: 10px;"><?php echo nl2br(htmlspecialchars($rating['review_text'])); ?></p>
                     <?php endif; ?>
+                    <div style="margin-top: 8px; display: flex; gap: 12px; color: #666;">
+                        <span><i class="fas fa-thumbs-up" style="color: #2e7d32;"></i> <?php echo (int) $rating['like_count']; ?></span>
+                        <span><i class="fas fa-thumbs-down" style="color: #c62828;"></i> <?php echo (int) $rating['dislike_count']; ?></span>
+                    </div>
                 </div>
                 <?php endforeach; ?>
             <?php else: ?>
-                <p>No reviews yet.</p>
+                <p>You have not posted any review yet.</p>
             <?php endif; ?>
         </div>
     </div>
