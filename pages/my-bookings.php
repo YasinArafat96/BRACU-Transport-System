@@ -3,12 +3,10 @@
 
 require_once '../includes/config.php';
 
-
 if (!isset($_SESSION['loggedin']) || $_SESSION['loggedin'] !== true) {
     header("Location: login.php");
     exit;
 }
-
 
 if (isAdmin($pdo, $_SESSION['id'])) {
     $_SESSION['info'] = "Booking functionality is for students only.";
@@ -25,6 +23,7 @@ if ($user_info) {
     $_SESSION['first_name'] = $user_info['first_name'];
     $_SESSION['last_name'] = $user_info['last_name'];
 }
+
 
 $bookings_stmt = $pdo->prepare("
     SELECT b.*, 
@@ -55,12 +54,12 @@ require_once '../includes/header.php';
             } else {
                 $status = strtolower($booking['status']);
             }
- 
+            
+        
             $time_until = $departure_time - $current_time;
             $hours_until = floor($time_until / 3600);
             $minutes_until = floor(($time_until % 3600) / 60);
             
-          
             $can_cancel = $time_until > 3600 && ($booking['status'] == 'pending' || $booking['status'] == 'confirmed');
             $refund_percentage = $can_cancel ? 100 : 0;
         ?>
@@ -184,6 +183,7 @@ require_once '../includes/header.php';
         </div>
     </div>
 <?php endif; ?>
+
 
 <div class="modal" id="ticketModal">
     <div class="modal-content">
