@@ -32,12 +32,12 @@ require_once '../includes/header.php';
         <div class="map-placeholder" id="mapPlaceholder">
             <i class="fas fa-map-marked-alt fa-4x"></i>
             <h3>Live Map</h3>
-            <p>Click below to start tracking your location</p>
+            <p>We need your location permission to start live tracking.</p>
             <button class="btn btn-primary" onclick="initMap()">
-                <i class="fas fa-play"></i> Start Tracking
+                <i class="fas fa-play"></i> Enable & Start Tracking
             </button>
         </div>
-        <div class="actual-map" id="actualMap" style="display: none; height: 400px; background: #f0f0f0; border-radius: 8px; position: relative;">
+        <div class="actual-map" id="actualMap" style="display: none; height: 400px; border-radius: 8px; position: relative;">
         </div>
     </div>
 
@@ -73,24 +73,55 @@ require_once '../includes/header.php';
     </div>
 </div>
 
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" integrity="sha256-p4NxAoJBhIIN+hmNHrzRCf9tD/miZyoHS5obTRR9BMY=" crossorigin=""/>
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js" integrity="sha256-20nQCchB9co0qIjJZRGuk2/Z9VM+kNiyxNV1lvTlZBo=" crossorigin=""></script>
+
 <script>
 let watchId = null;
 let currentLocation = null;
+let liveMap = null;
+let userMarker = null;
+let accuracyCircle = null;
+let isTrackingStarted = false;
+let busMarkers = {};
+let routeLayer = null;
+let nearbyBusData = [];
+
+function setLocationDetails(latitude, longitude, accuracy, lastUpdate) {
+    document.getElementById('latitude').textContent = latitude;
+    document.getElementById('longitude').textContent = longitude;
+    document.getElementById('accuracy').textContent = accuracy;
+    document.getElementById('lastUpdate').textContent = lastUpdate;
+}
 
 function initMap() {
+    if (isTrackingStarted) {
+        return;
+    }
     if (navigator.geolocation) {
+        isTrackingStarted = true;
         document.getElementById('mapPlaceholder').style.display = 'none';
         document.getElementById('actualMap').style.display = 'block';
-        
+
+        if (!liveMap) {
+            liveMap = L.map('actualMap').setView([23.8103, 90.4125], 14);
+            L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+                maxZoom: 19,
+                attribution: '&copy; OpenStreetMap contributors'
+            }).addTo(liveMap);
+        }
+
         watchId = navigator.geolocation.watchPosition(
             showPosition,
             handleLocationError,
-            { enableHighAccuracy: true, timeout: 5000, maximumAge: 0 }
+            { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
         );
-        
+
+        setLocationDetails('Locating...', 'Locating...', 'Locating...', 'Waiting for GPS...');
         loadNearbyBuses();
     } else {
         alert('Geolocation is not supported by this browser.');
+        setLocationDetails('Unavailable', 'Unavailable', 'Unavailable', 'Unsupported browser');
     }
 }
 
@@ -102,30 +133,110 @@ function showPosition(position) {
         timestamp: new Date(position.timestamp)
     };
     
-    document.getElementById('latitude').textContent = currentLocation.latitude.toFixed(6);
-    document.getElementById('longitude').textContent = currentLocation.longitude.toFixed(6);
-    document.getElementById('accuracy').textContent = Math.round(currentLocation.accuracy);
-    document.getElementById('lastUpdate').textContent = currentLocation.timestamp.toLocaleTimeString();
+    setLocationDetails(
+        currentLocation.latitude.toFixed(6),
+        currentLocation.longitude.toFixed(6),
+        String(Math.round(currentLocation.accuracy)),
+        currentLocation.timestamp.toLocaleTimeString()
+    );
     
     updateMapVisualization();
 }
 
 function updateMapVisualization() {
-    const mapElement = document.getElementById('actualMap');
-    mapElement.innerHTML = `
-        <div style="padding: 20px; text-align: center;">
-            <div style="position: relative; height: 300px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 8px; display: flex; align-items: center; justify-content: center;">
-                <div style="position: absolute; top: 50%; left: 50%; transform: translate(-50%, -50%);">
-                    <i class="fas fa-map-marker-alt fa-3x" style="color: #e74c3c; text-shadow: 0 0 10px rgba(0,0,0,0.5);"></i>
-                </div>
-                <div style="position: absolute; bottom: 20px; left: 20px; background: rgba(255,255,255,0.9); padding: 10px; border-radius: 5px;">
-                    <strong>Your Location</strong><br>
-                    ${currentLocation.latitude.toFixed(6)}, ${currentLocation.longitude.toFixed(6)}
-                </div>
-            </div>
-            <p style="margin-top: 10px;"><small>In a real implementation, this would show an actual interactive map</small></p>
-        </div>
-    `;
+    if (!liveMap || !currentLocation) {
+        return;
+    }
+
+    const latLng = [currentLocation.latitude, currentLocation.longitude];
+
+    if (!userMarker) {
+        userMarker = L.marker(latLng).addTo(liveMap).bindPopup('Your live location');
+    } else {
+        userMarker.setLatLng(latLng);
+    }
+
+    if (!accuracyCircle) {
+        accuracyCircle = L.circle(latLng, {
+            radius: currentLocation.accuracy,
+            color: '#2E86DE',
+            fillColor: '#2E86DE',
+            fillOpacity: 0.15
+        }).addTo(liveMap);
+    } else {
+        accuracyCircle.setLatLng(latLng);
+        accuracyCircle.setRadius(currentLocation.accuracy);
+    }
+
+    liveMap.setView(latLng, 16);
+}
+
+function clearRoute() {
+    if (routeLayer && liveMap) {
+        liveMap.removeLayer(routeLayer);
+        routeLayer = null;
+    }
+}
+
+async function drawRouteToBus(bus) {
+    if (!liveMap || !currentLocation || !bus) {
+        return;
+    }
+
+    clearRoute();
+    const from = [currentLocation.latitude, currentLocation.longitude];
+    const to = [bus.lat, bus.lng];
+
+    try {
+        const url = `https://router.project-osrm.org/route/v1/driving/${from[1]},${from[0]};${to[1]},${to[0]}?overview=full&geometries=geojson`;
+        const response = await fetch(url);
+        if (!response.ok) {
+            throw new Error('Routing service unavailable');
+        }
+        const data = await response.json();
+        if (!data.routes || !data.routes.length) {
+            throw new Error('No route found');
+        }
+
+        const coords = data.routes[0].geometry.coordinates.map(function(pair) {
+            return [pair[1], pair[0]];
+        });
+        routeLayer = L.polyline(coords, {
+            color: '#1e88e5',
+            weight: 5,
+            opacity: 0.9
+        }).addTo(liveMap);
+        liveMap.fitBounds(routeLayer.getBounds(), { padding: [30, 30] });
+    } catch (e) {
+        // Fallback to direct line if routing API is unavailable.
+        routeLayer = L.polyline([from, to], {
+            color: '#1e88e5',
+            weight: 4,
+            dashArray: '8, 8',
+            opacity: 0.9
+        }).addTo(liveMap);
+        liveMap.fitBounds(routeLayer.getBounds(), { padding: [30, 30] });
+    }
+}
+
+async function viewBusOnMap(busId) {
+    if (!isTrackingStarted) {
+        initMap();
+    }
+    const bus = nearbyBusData.find(function(item) {
+        return item.id === busId;
+    });
+    if (!bus || !liveMap) {
+        return;
+    }
+    document.getElementById('mapPlaceholder').style.display = 'none';
+    document.getElementById('actualMap').style.display = 'block';
+
+    if (busMarkers[bus.id]) {
+        busMarkers[bus.id].openPopup();
+    }
+
+    await drawRouteToBus(bus);
 }
 
 function handleLocationError(error) {
@@ -154,12 +265,16 @@ function handleLocationError(error) {
     `;
     document.getElementById('mapPlaceholder').style.display = 'block';
     document.getElementById('actualMap').style.display = 'none';
+    isTrackingStarted = false;
+    setLocationDetails('--', '--', '--', errorMessage);
 }
 
 function refreshLocation() {
     if (watchId !== null) {
         navigator.geolocation.clearWatch(watchId);
+        watchId = null;
     }
+    isTrackingStarted = false;
     initMap();
 }
 
@@ -184,15 +299,31 @@ function loadNearbyBuses() {
     `;
     
     setTimeout(() => {
+        const baseLat = currentLocation ? currentLocation.latitude : 23.8103;
+        const baseLng = currentLocation ? currentLocation.longitude : 90.4125;
         const demoBuses = [
-            { id: 'BUS-001', number: 'B23', route: 'Campus - Downtown', distance: '0.8 km', eta: '5 min' },
-            { id: 'BUS-002', number: 'B17', route: 'Campus - Student Village', distance: '1.2 km', eta: '8 min' },
-            { id: 'BUS-003', number: 'B15', route: 'Campus - Faculty Housing', distance: '2.1 km', eta: '12 min' }
+            { id: 'BUS-001', number: 'B23', route: 'Campus - Downtown', distance: '0.8 km', eta: '5 min', lat: baseLat + 0.0042, lng: baseLng + 0.0028 },
+            { id: 'BUS-002', number: 'B17', route: 'Campus - Student Village', distance: '1.2 km', eta: '8 min', lat: baseLat - 0.0053, lng: baseLng + 0.0041 },
+            { id: 'BUS-003', number: 'B15', route: 'Campus - Faculty Housing', distance: '2.1 km', eta: '12 min', lat: baseLat + 0.0065, lng: baseLng - 0.0054 }
         ];
+        nearbyBusData = demoBuses;
         
         busesContainer.innerHTML = '';
+
+        // Reset previous bus markers before drawing latest nearby bus positions.
+        Object.keys(busMarkers).forEach(function(key) {
+            if (liveMap && busMarkers[key]) {
+                liveMap.removeLayer(busMarkers[key]);
+            }
+        });
+        busMarkers = {};
         
         demoBuses.forEach(bus => {
+            if (liveMap) {
+                busMarkers[bus.id] = L.marker([bus.lat, bus.lng]).addTo(liveMap)
+                    .bindPopup(`Bus ${bus.number}<br>${bus.route}<br>ETA: ${bus.eta}`);
+            }
+
             const busElement = document.createElement('div');
             busElement.className = 'bus-item';
             busElement.innerHTML = `
@@ -204,20 +335,41 @@ function loadNearbyBuses() {
                     </div>
                 </div>
                 <div class="bus-actions">
-                    <button class="btn btn-sm btn-outline">
+                    <button class="btn btn-sm btn-outline" data-bus-id="${bus.id}">
                         <i class="fas fa-eye"></i> View
                     </button>
                 </div>
             `;
+            const viewButton = busElement.querySelector('[data-bus-id]');
+            if (viewButton) {
+                viewButton.addEventListener('click', function() {
+                    viewBusOnMap(bus.id);
+                });
+            }
             busesContainer.appendChild(busElement);
         });
     }, 2000);
 }
 
 document.addEventListener('DOMContentLoaded', function() {
+    initMap();
     const urlParams = new URLSearchParams(window.location.search);
     if (urlParams.get('auto') === 'true') {
         initMap();
+    }
+});
+
+window.addEventListener('beforeunload', function() {
+    if (watchId !== null && navigator.geolocation) {
+        navigator.geolocation.clearWatch(watchId);
+    }
+});
+
+document.addEventListener('fullscreenchange', function() {
+    if (liveMap) {
+        setTimeout(function() {
+            liveMap.invalidateSize();
+        }, 120);
     }
 });
 </script>
@@ -228,8 +380,25 @@ document.addEventListener('DOMContentLoaded', function() {
 .status-badge.online { background-color: var(--secondary); color: white; animation: pulse-live 2s infinite; }
 .status-badge i { font-size: 0.6rem; margin-right: 5px; }
 .map-container { margin: 20px 0; border-radius: 8px; overflow: hidden; }
+.actual-map { min-height: 400px; }
 .map-placeholder { text-align: center; padding: 60px 20px; background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); color: white; border-radius: 8px; }
 .map-placeholder i { margin-bottom: 15px; }
+.map-container:fullscreen {
+    width: 100vw;
+    height: 100vh;
+    max-width: 100vw;
+    max-height: 100vh;
+    margin: 0;
+    border-radius: 0;
+    background: #111;
+}
+.map-container:fullscreen #actualMap,
+.map-container:fullscreen .map-placeholder {
+    width: 100%;
+    height: 100%;
+    min-height: 100%;
+    border-radius: 0;
+}
 .tracking-controls { display: flex; justify-content: space-between; align-items: flex-start; margin-top: 20px; gap: 30px; }
 .control-group { display: flex; gap: 10px; flex-wrap: wrap; }
 .location-info { flex: 1; background: #f8f9fa; padding: 15px; border-radius: 8px; border-left: 4px solid var(--primary); }
